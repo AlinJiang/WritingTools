@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import AppKit
 import ApplicationServices
 import CoreGraphics
 
@@ -120,7 +121,7 @@ struct OnboardingPermissionsStep: View {
         Button("Open Privacy & Security") {
           if let url = URL(
             string:
-              "x-apple.systemsettings:com.apple.settings.PrivacySecurity.extension"
+              "x-apple.systempreferences:com.apple.preference.security"
           ) {
             NSWorkspace.shared.open(url)
           }
@@ -146,7 +147,7 @@ struct OnboardingPermissionsHelper {
       try? await Task.sleep(for: .milliseconds(200))
       if let url = URL(
         string:
-          "x-apple.systemsettings:com.apple.settings.PrivacySecurity.extension?Privacy_Accessibility"
+          "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
       ) {
         NSWorkspace.shared.open(url)
       }
@@ -159,7 +160,21 @@ struct OnboardingPermissionsHelper {
 
   static func requestScreenRecording(completion: @escaping (Bool) -> Void) {
     // CGRequestScreenCaptureAccess may present system UI, so it must run on the main thread.
+    // NOTE: macOS shows this prompt at most ONCE per app (per TCC record). On a
+    // second invocation — or for an app already known to TCC (e.g. a rebuilt
+    // unsigned binary) — it returns immediately with no visible prompt. When we
+    // don't get a grant, fall back to opening the Screen Recording settings pane
+    // so the user has a path to toggle it manually.
     let granted = CGRequestScreenCaptureAccess()
     completion(granted)
+
+    if !granted {
+      if let url = URL(
+        string:
+          "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
+      ) {
+        NSWorkspace.shared.open(url)
+      }
+    }
   }
 }

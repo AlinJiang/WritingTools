@@ -161,7 +161,7 @@ import ApplicationServices
   private func openPrivacyPane(anchor: String) {
     if let url = URL(
       string:
-        "x-apple.systemsettings:com.apple.settings.PrivacySecurity.extension?\(anchor)"
+        "x-apple.systempreferences:com.apple.preference.security?\(anchor)"
     ) {
       NSWorkspace.shared.open(url)
     }
