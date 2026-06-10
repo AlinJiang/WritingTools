@@ -258,6 +258,7 @@ struct CommandModel: Codable, Identifiable, Equatable {
             }
             """,
             icon: "magnifyingglass",
+            useResponseWindow: true,
             isBuiltIn: true,
             hasShortcut: false,
             preserveFormatting: true
@@ -343,6 +344,7 @@ struct CommandModel: Codable, Identifiable, Equatable {
             }
             """,
             icon: "arrow.triangle.2.circlepath",
+            useResponseWindow: true,
             isBuiltIn: true,
             hasShortcut: false
         )
@@ -419,6 +421,7 @@ struct CommandModel: Codable, Identifiable, Equatable {
             }
             """,
             icon: "face.smiling",
+            useResponseWindow: true,
             isBuiltIn: true,
             hasShortcut: false
         )
@@ -495,6 +498,7 @@ struct CommandModel: Codable, Identifiable, Equatable {
             }
             """,
             icon: "briefcase",
+            useResponseWindow: true,
             isBuiltIn: true,
             hasShortcut: false
         )
@@ -579,6 +583,7 @@ struct CommandModel: Codable, Identifiable, Equatable {
             }
             """,
             icon: "scissors",
+            useResponseWindow: true,
             isBuiltIn: true,
             hasShortcut: false
         )
@@ -651,6 +656,7 @@ struct CommandModel: Codable, Identifiable, Equatable {
             }
             """,
             icon: "doc.text",
+            useResponseWindow: true,
             isBuiltIn: true,
             hasShortcut: false
         )
@@ -726,6 +732,7 @@ struct CommandModel: Codable, Identifiable, Equatable {
             }
             """,
             icon: "list.bullet",
+            useResponseWindow: true,
             isBuiltIn: true,
             hasShortcut: false
         )
@@ -799,6 +806,7 @@ struct CommandModel: Codable, Identifiable, Equatable {
             }
             """,
             icon: "tablecells",
+            useResponseWindow: true,
             isBuiltIn: true,
             hasShortcut: false
         )
