@@ -37,6 +37,7 @@ struct AIProviderSettingsPane<SaveButton: View, CompleteSetupButton: View>: View
                     Text("Mistral AI").tag("mistral")
                     Text("Ollama").tag("ollama")
                     Text("OpenRouter").tag("openrouter")
+                    Text("Midway (Bedrock)").tag("midway")
                 }
                 .pickerStyle(.menu)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -68,6 +69,8 @@ struct AIProviderSettingsPane<SaveButton: View, CompleteSetupButton: View>: View
                         OllamaSettingsView(needsSaving: $needsSaving)
                     } else if settings.currentProvider == "openrouter" {
                         OpenRouterSettingsView(needsSaving: $needsSaving)
+                    } else if settings.currentProvider == "midway" {
+                        MidwaySettingsView(needsSaving: $needsSaving)
                     } else if settings.currentProvider == "local" {
                         LocalLLMSettingsView(provider: appState.localLLMProvider)
                     }

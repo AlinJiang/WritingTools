@@ -273,6 +273,13 @@ struct SettingsView: View {
             if settings.ollamaModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 return "Ollama model is required."
             }
+        case "midway":
+            if settings.midwayEndpointURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return "Midway endpoint URL is required."
+            }
+            if settings.midwayModelId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return "Midway model ID is required."
+            }
         default:
             break
         }

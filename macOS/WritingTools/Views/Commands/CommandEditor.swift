@@ -220,6 +220,7 @@ struct CommandEditor: View {
                                 Text("Mistral AI").tag("mistral")
                                 Text("Ollama").tag("ollama")
                                 Text("OpenRouter").tag("openrouter")
+                                Text("Midway (Bedrock)").tag("midway")
                                 Text("Custom Provider").tag("custom")
                             }
                             .pickerStyle(.menu)

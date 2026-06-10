@@ -62,6 +62,7 @@ struct OnboardingCustomizationStep: View {
             Text("Anthropic (Claude)").tag("anthropic")
             Text("Ollama (Self-Hosted)").tag("ollama")
             Text("OpenRouter").tag("openrouter")
+            Text("Midway (Bedrock)").tag("midway")
           }
           .pickerStyle(.menu)
           .frame(maxWidth: .infinity, alignment: .leading)

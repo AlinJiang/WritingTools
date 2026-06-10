@@ -32,7 +32,16 @@ Note: Streaming has been fully removed throughout the code.
 """
 
 import base64
+import json
 import logging
+import os
+import shutil
+import subprocess
+import threading
+import time
+import urllib.error
+import urllib.request
+import uuid
 import webbrowser
 from abc import ABC, abstractmethod
 from typing import List
@@ -639,6 +648,315 @@ class OllamaProvider(AIProvider):
 
     def before_load(self):
         self.client = None
+
+    def cancel(self):
+        self.close_requested = True
+
+
+# --- Midway-authed Bedrock backend (Amazon Dex AIDP) -------------------------
+
+class MidwayBedrockError(Exception):
+    """Raised for Midway auth or Dex inference failures."""
+
+
+class MidwayTokenStore:
+    """
+    Mints and caches a Midway OIDC ``id_token`` by replaying the same flow as the
+    shell ``mcurl .../SSO`` command: it shells out to ``curl`` using the Midway
+    cookie jar at ``~/.midway/cookie``. The token is cached in memory and
+    refreshed shortly before its JWT ``exp`` claim.
+
+    ``curl`` ships with Windows 10+ (``curl.exe``) and is present on macOS/Linux,
+    so we don't reimplement Netscape cookie-jar parsing here.
+    """
+
+    _SSO_URL = "https://midway-auth.amazon.com/SSO"
+    _CLIENT_URL = "https://ai-hub.dex.amazon.dev"
+    _EXPIRY_GUARD = 300         # refresh 5 min before the real expiry
+    _FALLBACK_LIFETIME = 50 * 60
+
+    def __init__(self):
+        self._token = None
+        self._expires_at = 0.0
+        self._lock = threading.Lock()
+
+    @staticmethod
+    def _cookie_path() -> str:
+        return os.path.expanduser(os.path.join("~", ".midway", "cookie"))
+
+    def invalidate(self):
+        with self._lock:
+            self._token = None
+            self._expires_at = 0.0
+
+    def token(self) -> str:
+        with self._lock:
+            if self._token and (self._expires_at - time.time()) > self._EXPIRY_GUARD:
+                return self._token
+            token = self._mint()
+            self._token = token
+            self._expires_at = self._expiry_of(token) or (time.time() + self._FALLBACK_LIFETIME)
+            return token
+
+    def _mint(self) -> str:
+        cookie = self._cookie_path()
+        if not os.path.exists(cookie):
+            raise MidwayBedrockError(
+                f"Midway cookie not found at {cookie}. Run `mwinit` in a terminal first."
+            )
+
+        curl = shutil.which("curl") or "curl"
+        nonce = uuid.uuid4().hex
+        args = [
+            curl, "-sL",
+            "--cookie", cookie,
+            "--cookie-jar", cookie,
+            "-G", self._SSO_URL,
+            "--data-urlencode", "response_type=id_token",
+            "--data-urlencode", "scope=openid",
+            "--data-urlencode", f"client_id={self._CLIENT_URL}",
+            "--data-urlencode", f"redirect_uri={self._CLIENT_URL}/",
+            "--data-urlencode", f"nonce={nonce}",
+        ]
+        try:
+            proc = subprocess.run(args, capture_output=True, text=True, timeout=30)
+        except FileNotFoundError as exc:
+            raise MidwayBedrockError(f"Could not launch curl: {exc}") from exc
+        except subprocess.TimeoutExpired as exc:
+            raise MidwayBedrockError("Timed out minting Midway token.") from exc
+
+        if proc.returncode != 0:
+            detail = (proc.stderr or "").strip()
+            raise MidwayBedrockError(f"curl exited with status {proc.returncode}. {detail}")
+
+        token = (proc.stdout or "").strip()
+        if not self._is_likely_jwt(token):
+            # An expired cookie returns an HTML login page instead of a token.
+            raise MidwayBedrockError(
+                "Midway returned no valid token (cookie likely expired). "
+                "Run `mwinit` in a terminal and retry."
+            )
+        return token
+
+    @staticmethod
+    def _is_likely_jwt(token: str) -> bool:
+        return (
+            len(token) > 100
+            and " " not in token
+            and "\n" not in token
+            and token.count(".") == 2
+        )
+
+    @staticmethod
+    def _expiry_of(token: str):
+        """Decode the JWT ``exp`` claim (unix seconds), or None if undecodable."""
+        try:
+            payload = token.split(".")[1]
+            payload += "=" * (-len(payload) % 4)  # pad to a multiple of 4
+            data = json.loads(base64.urlsafe_b64decode(payload))
+            exp = data.get("exp")
+            return float(exp) if exp is not None else None
+        except Exception:
+            return None
+
+
+# Shared across all provider instances for the process lifetime.
+_midway_token_store = MidwayTokenStore()
+
+
+class MidwayBedrockProvider(AIProvider):
+    """
+    Provider for the Midway-authed Bedrock inference endpoint (Amazon Dex AIDP).
+
+    Authentication is automatic: it mints a short-lived Midway ``id_token`` from
+    the local ``~/.midway/cookie`` and sends it as a Bearer token. The request
+    body is a Bedrock ``InvokeModel`` envelope (``{modelId, body}``); the response
+    is a run of concatenated top-level JSON objects (NOT SSE), which we parse with
+    ``json.JSONDecoder.raw_decode``.
+
+    Model IDs were verified live against the endpoint: the Global CRIS form for
+    Sonnet 4.6 is bare (no date, no ``-v1:0``); the ``us.`` prefix and ``-v1:0``
+    suffix variants 500 there.
+    """
+
+    DEFAULT_ENDPOINT = "https://prod.fargate.inference.aidp.dex.amazon.dev/"
+    DEFAULT_MODEL_ID = "global.anthropic.claude-sonnet-4-6"
+
+    def __init__(self, app):
+        self.close_requested = False
+        settings = [
+            TextSetting(
+                name="endpoint_url",
+                display_name="Inference Endpoint URL",
+                default_value=self.DEFAULT_ENDPOINT,
+                description="E.g. https://prod.fargate.inference.aidp.dex.amazon.dev/",
+            ),
+            DropdownSetting(
+                name="model_id",
+                display_name="Model",
+                default_value=self.DEFAULT_MODEL_ID,
+                description="Select the Bedrock model to use",
+                options=[
+                    ("Claude Sonnet 4.6 (Global CRIS)", "global.anthropic.claude-sonnet-4-6"),
+                    ("Claude Sonnet 4.5 (1M Context)", "global.anthropic.claude-sonnet-4-5-20250929-v1:0"),
+                    ("Claude Haiku 4.5 (Faster)", "us.anthropic.claude-haiku-4-5-20251001-v1:0"),
+                ],
+                allow_custom=True,
+                custom_placeholder="e.g., global.anthropic.claude-sonnet-4-6",
+            ),
+        ]
+        super().__init__(
+            app,
+            "Midway Bedrock (Amazon)",
+            settings,
+            "• Amazon-internal Bedrock inference via the Dex AIDP endpoint.\n"
+            "• Authentication is automatic using your local Midway cookie.\n"
+            "• If requests fail with an auth error, run `mwinit` in a terminal.",
+            "generic",
+            "Dex AI Hub",
+            lambda: webbrowser.open("https://ai-hub.dex.amazon.dev"),
+        )
+
+    def get_response(self, system_instruction: str, prompt, return_response: bool = False) -> str:
+        self.close_requested = False
+
+        # Normalise to a Bedrock/Anthropic messages array.
+        if isinstance(prompt, list):
+            system_text, messages = self._split_messages(prompt, system_instruction)
+        else:
+            system_text = system_instruction
+            messages = [{"role": "user", "content": [{"type": "text", "text": prompt}]}]
+
+        body = {
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": 10000,
+            "temperature": 0.7,
+            "messages": messages,
+        }
+        if system_text:
+            body["system"] = system_text
+
+        envelope = {"modelId": self.model_id, "body": body}
+
+        try:
+            text = self._invoke(envelope, retry_on_auth=True)
+            response_text = (text or "").strip()
+            if not response_text:
+                raise MidwayBedrockError("No text content in response.")
+
+            if not return_response and not hasattr(self.app, "current_response_window"):
+                self.app.output_ready_signal.emit(response_text)
+            return response_text
+        except Exception as e:
+            error_str = str(e)
+            logging.error(f"Midway Bedrock error: {error_str}")
+            self.app.show_message_signal.emit("Error", f"An error occurred: {error_str}")
+            return ""
+
+    @staticmethod
+    def _split_messages(history: list, fallback_system: str):
+        """
+        Convert an OpenAI-style chat history into a Bedrock/Anthropic messages
+        array, pulling any leading system message out into the top-level
+        ``system`` field (Bedrock rejects a ``system`` role inside ``messages``).
+        """
+        system_text = fallback_system
+        messages = []
+        for m in history:
+            role = m.get("role")
+            content = m.get("content", "")
+            if role == "system":
+                system_text = content
+                continue
+            bedrock_role = "assistant" if role == "assistant" else "user"
+            messages.append({
+                "role": bedrock_role,
+                "content": [{"type": "text", "text": content}],
+            })
+        return system_text, messages
+
+    def _invoke(self, envelope: dict, retry_on_auth: bool) -> str:
+        token = _midway_token_store.token()
+        data = json.dumps(envelope).encode("utf-8")
+        request = urllib.request.Request(
+            self.endpoint_url,
+            data=data,
+            method="POST",
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {token}",
+            },
+        )
+
+        try:
+            with urllib.request.urlopen(request, timeout=120) as resp:
+                content_type = resp.headers.get("Content-Type", "")
+                raw = resp.read().decode("utf-8", errors="replace")
+        except urllib.error.HTTPError as e:
+            if e.code == 401 and retry_on_auth:
+                _midway_token_store.invalidate()
+                return self._invoke(envelope, retry_on_auth=False)
+            detail = e.read().decode("utf-8", errors="replace") if e.fp else ""
+            raise MidwayBedrockError(f"API Error ({e.code}): {detail or e.reason}") from e
+        except urllib.error.URLError as e:
+            raise MidwayBedrockError(f"Network error: {e.reason}") from e
+
+        # An expired session can return a 200 HTML login page instead of the stream.
+        if "text/html" in content_type.lower():
+            _midway_token_store.invalidate()
+            raise MidwayBedrockError(
+                "Received a login page instead of an API response. "
+                "Run `mwinit` in a terminal and retry."
+            )
+
+        return self._extract_text(raw)
+
+    @staticmethod
+    def _extract_text(raw: str) -> str:
+        """
+        Parse the Bedrock ``InvokeModelWithResponseStream`` body: a run of
+        concatenated top-level JSON objects (e.g.
+        ``{message_start}{content_block_delta}...{message_stop}``). We walk it with
+        ``raw_decode``, skipping whitespace between objects, and concatenate every
+        ``content_block_delta`` text delta.
+        """
+        decoder = json.JSONDecoder()
+        compiled = []
+        idx = 0
+        length = len(raw)
+        while idx < length:
+            # Skip any whitespace separating concatenated objects.
+            while idx < length and raw[idx].isspace():
+                idx += 1
+            if idx >= length:
+                break
+            try:
+                obj, end = decoder.raw_decode(raw, idx)
+            except json.JSONDecodeError:
+                # Partial / malformed trailing data — stop scanning.
+                break
+            idx = end
+
+            if not isinstance(obj, dict):
+                continue
+            # A top-level `error` field signals a stream error.
+            if "error" in obj:
+                err = obj["error"]
+                message = err.get("message") if isinstance(err, dict) else str(err)
+                raise MidwayBedrockError(message or "Unknown streaming error.")
+            if obj.get("type") == "content_block_delta":
+                delta = obj.get("delta") or {}
+                if delta.get("type") == "text_delta":
+                    compiled.append(delta.get("text", ""))
+
+        return "".join(compiled)
+
+    def after_load(self):
+        # Nothing to construct — auth and HTTP are handled per request.
+        pass
+
+    def before_load(self):
+        pass
 
     def cancel(self):
         self.close_requested = True

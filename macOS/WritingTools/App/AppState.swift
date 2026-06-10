@@ -33,6 +33,7 @@ final class AppState {
     var ollamaProvider: OllamaProvider
     var localLLMProvider: LocalModelProvider
     var openRouterProvider: OpenRouterProvider
+    var midwayBedrockProvider: MidwayBedrockProvider
 
     // Cache for providers with model overrides to prevent memory leaks
     // Key: "providerName:model" -> Provider instance
@@ -74,6 +75,8 @@ final class AppState {
             return mistralProvider
         case "openrouter":
             return openRouterProvider
+        case "midway":
+            return midwayBedrockProvider
         default:
             return localLLMProvider
         }
@@ -132,6 +135,8 @@ final class AppState {
             return mistralProvider
         case "openrouter":
             return openRouterProvider
+        case "midway":
+            return midwayBedrockProvider
         case "local":
             return localLLMProvider
         default:
@@ -201,6 +206,13 @@ final class AppState {
                 model: model
             )
             provider = OpenRouterProvider(config: config)
+
+        case "midway":
+            let config = MidwayBedrockConfig(
+                endpointURL: asettings.midwayEndpointURL,
+                modelId: model
+            )
+            provider = MidwayBedrockProvider(config: config)
 
         case "local":
             return localLLMProvider
@@ -321,6 +333,13 @@ final class AppState {
         )
         self.openRouterProvider = OpenRouterProvider(config: openRouterConfig)
 
+        // Initialize Midway Bedrock
+        let midwayConfig = MidwayBedrockConfig(
+            endpointURL: asettings.midwayEndpointURL,
+            modelId: asettings.midwayModelId
+        )
+        self.midwayBedrockProvider = MidwayBedrockProvider(config: midwayConfig)
+
         if asettings.openAIApiKey.isEmpty &&
             asettings.geminiApiKey.isEmpty &&
             asettings.mistralApiKey.isEmpty &&
@@ -433,6 +452,17 @@ final class AppState {
         clearProviderCache()
     }
 
+    // For Midway Bedrock changes
+    func saveMidwayConfig(endpointURL: String, modelId: String) {
+        let asettings = AppSettings.shared
+        asettings.midwayEndpointURL = endpointURL
+        asettings.midwayModelId = modelId
+
+        let config = MidwayBedrockConfig(endpointURL: endpointURL, modelId: modelId)
+        midwayBedrockProvider = MidwayBedrockProvider(config: config)
+        clearProviderCache()
+    }
+
     /// Saves provider settings based on the currently selected provider
     /// This is a unified method to reduce code duplication between OnboardingView and SettingsView
     func saveCurrentProviderSettings() {
@@ -477,6 +507,11 @@ final class AppState {
                 keepAlive: settings.ollamaKeepAlive
             )
             UserDefaults.standard.set(settings.ollamaImageMode.rawValue, forKey: "ollama_image_mode")
+        case "midway":
+            saveMidwayConfig(
+                endpointURL: settings.midwayEndpointURL,
+                modelId: settings.midwayModelId
+            )
         default:
             break
         }

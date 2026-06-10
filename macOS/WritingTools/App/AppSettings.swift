@@ -148,6 +148,15 @@ final class AppSettings {
     var openRouterCustomModel: String {
         didSet { defaults.set(openRouterCustomModel, forKey: "openrouter_custom_model") }
     }
+
+    // Midway-authed Bedrock inference endpoint (Dex AIDP). No API key — uses the
+    // local Midway cookie to mint short-lived id_tokens automatically.
+    var midwayEndpointURL: String {
+        didSet { defaults.set(midwayEndpointURL, forKey: "midway_endpoint_url") }
+    }
+    var midwayModelId: String {
+        didSet { defaults.set(midwayModelId, forKey: "midway_model_id") }
+    }
     
     // Store the ID (rawValue) of the selected local LLM model type
     var selectedLocalLLMId: String? {
@@ -231,6 +240,9 @@ final class AppSettings {
         self.openRouterApiKey = keychain.bootstrapRetrieve(forKey: "openrouter_api_key") ?? ""
         self.openRouterModel = defaults.string(forKey: "openrouter_model") ?? OpenRouterConfig.defaultModel
         self.openRouterCustomModel = defaults.string(forKey: "openrouter_custom_model") ?? ""
+
+        self.midwayEndpointURL = defaults.string(forKey: "midway_endpoint_url") ?? MidwayBedrockConfig.defaultEndpoint
+        self.midwayModelId = defaults.string(forKey: "midway_model_id") ?? MidwayBedrockConfig.defaultModelId
         
         // Custom commands setting - default to true (open in response window)
         self.openCustomCommandsInResponseWindow = defaults.object(forKey: "open_custom_commands_in_response_window") as? Bool ?? true
