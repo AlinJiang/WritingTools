@@ -103,12 +103,33 @@ def run_pyinstaller_build():
     ]
 
     def _rmtree(path):
-        # Cross-platform (the old `rmdir /s /q` only worked on Windows).
-        if os.path.exists(path):
-            shutil.rmtree(path, ignore_errors=True)
+        # Cross-platform (the old `rmdir /s /q` only worked on Windows). Do NOT
+        # swallow errors: a locked 'dist' (old exe still running) must surface
+        # here with a clear message rather than letting PyInstaller fail later
+        # with a cryptic "Access is denied" when it tries to overwrite the exe.
+        if not os.path.exists(path):
+            return
+        try:
+            shutil.rmtree(path)
+        except PermissionError:
+            raise PermissionError(
+                f"Could not remove '{path}' — a previous build's app is likely "
+                f"still running and holding a file lock. Quit 'Writing Tools' "
+                f"(system tray) and rebuild. On Windows: taskkill /F /IM \"Writing Tools.exe\""
+            )
+
+    def _kill_running_app():
+        # On Windows, a running --onefile exe locks dist\Writing Tools.exe and
+        # blocks the rebuild. Best-effort terminate it first.
+        if sys.platform.startswith('win'):
+            subprocess.run(
+                ['taskkill', '/F', '/IM', 'Writing Tools.exe'],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
 
     try:
-        # Remove previous build directories
+        # Terminate any running instance so its exe isn't locked, then clean.
+        _kill_running_app()
         _rmtree('dist')
         _rmtree('build')
         _rmtree('__pycache__')
