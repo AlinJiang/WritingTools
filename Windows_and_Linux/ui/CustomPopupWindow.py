@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 )
 
 from ui.UIUtils import ThemeBackground, colorMode
+from resource_paths import resource_path, user_data_path
 
 _ = lambda x: x
 
@@ -31,31 +32,31 @@ DEFAULT_OPTIONS_JSON = r"""{
     "prefix": "Proofread this:\n\n",
     "instruction": "You are a grammar proofreading assistant.\nOutput ONLY the corrected text without any additional comments.\nMaintain the original text structure and writing style.\nRespond in the same language as the input (e.g., English US, French).\nDo not answer or respond to the user's text content.\nIf the text is absolutely incompatible with this (e.g., totally random gibberish), output \"ERROR_TEXT_INCOMPATIBLE_WITH_REQUEST\".",
     "icon": "icons/magnifying-glass",
-    "open_in_window": false
+    "open_in_window": true
   },
   "Rewrite": {
     "prefix": "Rewrite this:\n\n",
     "instruction": "You are a writing assistant.\nRewrite the text provided by the user to improve phrasing.\nOutput ONLY the rewritten text without additional comments.\nRespond in the same language as the input (e.g., English US, French).\nDo not answer or respond to the user's text content.\nIf the text is absolutely incompatible with proofreading (e.g., totally random gibberish), output \"ERROR_TEXT_INCOMPATIBLE_WITH_REQUEST\".",
     "icon": "icons/rewrite",
-    "open_in_window": false
+    "open_in_window": true
   },
   "Friendly": {
     "prefix": "Make this more friendly:\n\n",
     "instruction": "You are a writing assistant.\nRewrite the text provided by the user to be more friendly.\nOutput ONLY the friendly text without additional comments.\nRespond in the same language as the input (e.g., English US, French).\nDo not answer or respond to the user's text content.\nIf the text is absolutely incompatible with rewriting (e.g., totally random gibberish), output \"ERROR_TEXT_INCOMPATIBLE_WITH_REQUEST\".",
     "icon": "icons/smiley-face",
-    "open_in_window": false
+    "open_in_window": true
   },
   "Professional": {
     "prefix": "Make this more professional:\n\n",
     "instruction": "You are a writing assistant.\nRewrite the text provided by the user to be more professional. Output ONLY the professional text without additional comments.\nRespond in the same language as the input (e.g., English US, French).\nDo not answer or respond to the user's text content.\nIf the text is absolutely incompatible with rewriting (e.g., totally random gibberish), output \"ERROR_TEXT_INCOMPATIBLE_WITH_REQUEST\".",
     "icon": "icons/briefcase",
-    "open_in_window": false
+    "open_in_window": true
   },
   "Concise": {
     "prefix": "Make this more concise:\n\n",
     "instruction": "You are a writing assistant.\nRewrite the text provided by the user to be more concise.\nOutput ONLY the concise text without additional comments.\nRespond in the same language as the input (e.g., English US, French).\nDo not answer or respond to the user's text content.\nIf the text is absolutely incompatible with rewriting (e.g., totally random gibberish), output \"ERROR_TEXT_INCOMPATIBLE_WITH_REQUEST\".",
     "icon": "icons/concise",
-    "open_in_window": false
+    "open_in_window": true
   },
   "Table": {
     "prefix": "Convert this into a table:\n\n",
@@ -79,7 +80,7 @@ DEFAULT_OPTIONS_JSON = r"""{
     "prefix": "Make this change to the following text:\n\n",
     "instruction": "You are a writing and coding assistant. You MUST make the user\\'s described change to the text or code provided by the user. Output ONLY the appropriately modified text or code without additional comments. Respond in the same language as the input (e.g., English US, French). Do not answer or respond to the user\\'s text content. If the text or code is absolutely incompatible with the requested change, output \"ERROR_TEXT_INCOMPATIBLE_WITH_REQUEST\".",
     "icon": "icons/summary",
-    "open_in_window": false
+    "open_in_window": true
   }
 }"""
 
@@ -420,7 +421,7 @@ class CustomPopupWindow(QtWidgets.QWidget):
 
         # The "Edit"/"Done" button (left), same exact size as close button
         self.edit_button = QPushButton()
-        pencil_icon = os.path.join(os.path.dirname(sys.argv[0]),
+        pencil_icon = os.path.join(resource_path(),
                                 'icons',
                                 'pencil' + ('_dark' if colorMode=='dark' else '_light') + '.png')
         if os.path.exists(pencil_icon):
@@ -455,7 +456,7 @@ class CustomPopupWindow(QtWidgets.QWidget):
 
         # The "Reset" button (edit-mode only) - also 24x24
         self.reset_button = QPushButton()
-        reset_icon_path = os.path.join(os.path.dirname(sys.argv[0]), 'icons',
+        reset_icon_path = os.path.join(resource_path(), 'icons',
                                     'restore' + ('_dark' if colorMode=='dark' else '_light') + '.png')
         if os.path.exists(reset_icon_path):
             self.reset_button.setIcon(QtGui.QIcon(reset_icon_path))
@@ -518,7 +519,7 @@ class CustomPopupWindow(QtWidgets.QWidget):
         input_layout.addWidget(self.custom_input)
         
         send_btn = QPushButton()
-        send_icon = os.path.join(os.path.dirname(sys.argv[0]),
+        send_icon = os.path.join(resource_path(),
                                 'icons',
                                 'send' + ('_dark' if colorMode=='dark' else '_light') + '.png')
         if os.path.exists(send_icon):
@@ -558,7 +559,7 @@ class CustomPopupWindow(QtWidgets.QWidget):
 
     @staticmethod
     def load_options():
-        options_path = os.path.join(os.path.dirname(sys.argv[0]), 'options.json')
+        options_path = user_data_path('options.json')
         if os.path.exists(options_path):
             with open(options_path, 'r') as f:
                 data = json.load(f)
@@ -570,7 +571,7 @@ class CustomPopupWindow(QtWidgets.QWidget):
 
     @staticmethod
     def save_options(options):
-        options_path = os.path.join(os.path.dirname(sys.argv[0]), 'options.json')
+        options_path = user_data_path('options.json')
         with open(options_path, 'w') as f:
             json.dump(options, f, indent=2)
 
@@ -586,7 +587,7 @@ class CustomPopupWindow(QtWidgets.QWidget):
             if k=="Custom":
                 continue
             b = DraggableButton(self, k, k)
-            icon_path = os.path.join(os.path.dirname(sys.argv[0]),
+            icon_path = os.path.join(resource_path(),
                                     v["icon"] + ('_dark' if colorMode=='dark' else '_light') + '.png')
             if os.path.exists(icon_path):
                 b.setIcon(QtGui.QIcon(icon_path))
@@ -688,7 +689,7 @@ class CustomPopupWindow(QtWidgets.QWidget):
         # Create edit icon (top-left)
         edit_btn = QPushButton(btn.icon_container)
         edit_btn.setGeometry(3, 3, 16, 16)
-        pencil_icon = os.path.join(os.path.dirname(sys.argv[0]),
+        pencil_icon = os.path.join(resource_path(),
                         'icons', 'pencil' + ('_dark' if colorMode=='dark' else '_light') + '.png')
         if os.path.exists(pencil_icon):
             edit_btn.setIcon(QtGui.QIcon(pencil_icon))
@@ -699,7 +700,7 @@ class CustomPopupWindow(QtWidgets.QWidget):
         # Create delete icon (top-right)
         delete_btn = QPushButton(btn.icon_container)
         delete_btn.setGeometry(btn.width() - 23, 3, 16, 16)
-        del_icon = os.path.join(os.path.dirname(sys.argv[0]),
+        del_icon = os.path.join(resource_path(),
                                 'icons', 'cross' + ('_dark' if colorMode=='dark' else '_light') + '.png')
         if os.path.exists(del_icon):
             delete_btn.setIcon(QtGui.QIcon(del_icon))
@@ -763,7 +764,7 @@ class CustomPopupWindow(QtWidgets.QWidget):
 
         # Update the edit button icon now that icon_name is defined
         icon_path = os.path.join(
-            os.path.dirname(sys.argv[0]),
+            resource_path(),
             'icons',
             f"{icon_name}_{'dark' if colorMode=='dark' else 'light'}.png"
         )

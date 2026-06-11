@@ -8,6 +8,7 @@ from PySide6.QtWidgets import QHBoxLayout, QRadioButton, QScrollArea
 
 from ui.AutostartManager import AutostartManager
 from ui.UIUtils import UIUtils, colorMode
+from resource_paths import resource_path
 
 _ = lambda x: x
 
@@ -53,7 +54,7 @@ class SettingsWindow(QtWidgets.QWidget):
         provider_header_layout.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
 
         if provider.logo:
-            logo_path = os.path.join(os.path.dirname(sys.argv[0]), 'icons', f"provider_{provider.logo}.png")
+            logo_path = resource_path('icons', f"provider_{provider.logo}.png")
             if os.path.exists(logo_path):
                 targetPixmap = UIUtils.resize_and_round_image(QImage(logo_path), 30, 15)
                 logo_label = QtWidgets.QLabel()

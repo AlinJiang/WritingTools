@@ -3,6 +3,7 @@ import sys
 
 from PySide6 import QtGui, QtCore, QtWidgets
 from PySide6.QtGui import QImage, QPixmap
+from resource_paths import resource_path
 
 import darkdetect
 colorMode = 'dark' if darkdetect.isDark() else 'light'
@@ -39,7 +40,7 @@ class UIUtils:
     @classmethod
     def setup_window_and_layout(cls, base: QtWidgets.QWidget):
         # Set the window icon
-        icon_path = os.path.join(os.path.dirname(sys.argv[0]), 'icons', 'app_icon.png')
+        icon_path = resource_path('icons', 'app_icon.png')
         if os.path.exists(icon_path): base.setWindowIcon(QtGui.QIcon(icon_path))
         main_layout = QtWidgets.QVBoxLayout(base)
         main_layout.setContentsMargins(0, 0, 0, 0)
@@ -67,9 +68,9 @@ class ThemeBackground(QtWidgets.QWidget):
         painter.setRenderHint(QtGui.QPainter.RenderHint.SmoothPixmapTransform, True)
         if self.theme == 'gradient':
             if self.is_popup:
-                background_image = QtGui.QPixmap(os.path.join(os.path.dirname(sys.argv[0]), 'background_popup_dark.png' if colorMode == 'dark' else 'background_popup.png'))
+                background_image = QtGui.QPixmap(resource_path('background_popup_dark.png' if colorMode == 'dark' else 'background_popup.png'))
             else:
-                background_image = QtGui.QPixmap(os.path.join(os.path.dirname(sys.argv[0]), 'background_dark.png' if colorMode == 'dark' else 'background.png'))
+                background_image = QtGui.QPixmap(resource_path('background_dark.png' if colorMode == 'dark' else 'background.png'))
             # Adds a path/border using which the border radius would be drawn
             path = QtGui.QPainterPath()
             path.addRoundedRect(0, 0, self.width(), self.height(), self.border_radius, self.border_radius)

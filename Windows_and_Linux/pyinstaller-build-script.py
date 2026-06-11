@@ -1,6 +1,32 @@
 import os
+import shutil
 import subprocess
 import sys
+
+# Read-only data files the app loads at runtime via resource_path(). Under
+# --onefile PyInstaller unpacks these into sys._MEIPASS; without bundling them
+# the frozen exe crashes on startup (e.g. missing options.json -> options=None).
+# --add-data uses "src<SEP>dest" where SEP is ';' on Windows, ':' elsewhere.
+_DATA_ENTRIES = [
+    ("options.json", "."),
+    ("icons", "icons"),
+    ("locales", "locales"),
+    ("background.png", "."),
+    ("background_dark.png", "."),
+    ("background_popup.png", "."),
+    ("background_popup_dark.png", "."),
+]
+
+
+def _add_data_args():
+    sep = os.pathsep  # ';' on Windows, ':' on macOS/Linux
+    args = []
+    for src, dest in _DATA_ENTRIES:
+        if os.path.exists(src):
+            args += ["--add-data", f"{src}{sep}{dest}"]
+        else:
+            print(f"WARNING: data file/dir not found, skipping: {src}")
+    return args
 
 
 def run_pyinstaller_build():
@@ -12,6 +38,7 @@ def run_pyinstaller_build():
         "--name=Writing Tools",
         "--clean",
         "--noconfirm",
+        *_add_data_args(),
         # Exclude unnecessary modules
         "--exclude-module", "tkinter",
         "--exclude-module", "unittest",
@@ -75,27 +102,25 @@ def run_pyinstaller_build():
         "main.py"
     ]
 
+    def _rmtree(path):
+        # Cross-platform (the old `rmdir /s /q` only worked on Windows).
+        if os.path.exists(path):
+            shutil.rmtree(path, ignore_errors=True)
+
     try:
         # Remove previous build directories
-        if os.path.exists('dist'):
-            os.system("rmdir /s /q dist")
-        if os.path.exists('build'):
-            os.system("rmdir /s /q build")
-        if os.path.exists('__pycache__'):
-            os.system("rmdir /s /q __pycache__")
+        _rmtree('dist')
+        _rmtree('build')
+        _rmtree('__pycache__')
 
         # Run PyInstaller
         subprocess.run(pyinstaller_command, check=True)
         print("Build completed successfully!")
 
-        # Clean up unnecessary files
-        if os.path.exists('build'):
-            os.system("rmdir /s /q build")
-        if os.path.exists('__pycache__'):
-            os.system("rmdir /s /q __pycache__")
-
-        # No need to copy data files manually since they are included
-        # in the executable using --add-data
+        # Clean up intermediate files (the data files are bundled into the
+        # executable via --add-data above, so nothing to copy manually).
+        _rmtree('build')
+        _rmtree('__pycache__')
 
     except subprocess.CalledProcessError as e:
         print(f"Build failed with error: {e}")

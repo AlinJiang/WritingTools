@@ -16,6 +16,7 @@ import ui.ResponseWindow
 import ui.SettingsWindow
 from aiprovider import GeminiProvider, MidwayBedrockProvider, OllamaProvider, OpenAICompatibleProvider, obfuscate_api_key
 from pynput import keyboard as pykeyboard
+from resource_paths import resource_path, user_data_path
 from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import QLocale, Signal, Slot
 from PySide6.QtGui import QCursor, QGuiApplication
@@ -135,7 +136,7 @@ class WritingToolApp(QtWidgets.QApplication):
         try:
             translation = gettext.translation(
                 'messages',
-                localedir=os.path.join(os.path.dirname(__file__), 'locales'),
+                localedir=resource_path('locales'),
                 languages=[lang]
             )
         except FileNotFoundError:
@@ -183,7 +184,7 @@ class WritingToolApp(QtWidgets.QApplication):
         """
         Load the configuration file.
         """
-        self.config_path = os.path.join(os.path.dirname(sys.argv[0]), 'config.json')
+        self.config_path = user_data_path('config.json')
         logging.debug(f'Loading config from {self.config_path}')
         if os.path.exists(self.config_path):
             with open(self.config_path, 'r') as f:
@@ -314,16 +315,42 @@ class WritingToolApp(QtWidgets.QApplication):
     def load_options(self):
         """
         Load the options file.
+
+        options.json is BOTH a bundled default (shipped read-only inside the
+        build) AND user-editable at runtime. We keep the writable copy next to
+        the executable; on first run (or if it's missing) we seed it from the
+        bundled default so a fresh --onefile exe still has its options.
         """
-        self.options_path = os.path.join(os.path.dirname(sys.argv[0]), 'options.json')
+        self.options_path = user_data_path('options.json')
         logging.debug(f'Loading options from {self.options_path}')
+
+        # Seed the writable copy from the bundled default if it doesn't exist.
+        if not os.path.exists(self.options_path):
+            bundled = resource_path('options.json')
+            if os.path.exists(bundled):
+                try:
+                    with open(bundled, 'r') as src:
+                        default_data = src.read()
+                    with open(self.options_path, 'w') as dst:
+                        dst.write(default_data)
+                    logging.debug('Seeded options.json from bundled default')
+                except OSError as e:
+                    logging.error(f'Failed to seed options.json: {e}')
+
         if os.path.exists(self.options_path):
             with open(self.options_path, 'r') as f:
                 self.options = json.load(f)
                 logging.debug('Options loaded successfully')
         else:
-            logging.debug('Options file not found')
-            self.options = None
+            # Last resort: read the bundled default directly (read-only).
+            bundled = resource_path('options.json')
+            if os.path.exists(bundled):
+                with open(bundled, 'r') as f:
+                    self.options = json.load(f)
+                logging.debug('Loaded options from bundled default (read-only)')
+            else:
+                logging.debug('Options file not found')
+                self.options = None
 
     def save_config(self, config):
         """
@@ -549,7 +576,7 @@ class WritingToolApp(QtWidgets.QApplication):
             self.popup_window = ui.CustomPopupWindow.CustomPopupWindow(self)
 
             # Set the window icon
-            icon_path = os.path.join(os.path.dirname(sys.argv[0]), 'icons', 'app_icon.png')
+            icon_path = resource_path('icons', 'app_icon.png')
             if os.path.exists(icon_path): self.setWindowIcon(QtGui.QIcon(icon_path))
             # Get the screen containing the cursor
             cursor_pos = QCursor.pos()
@@ -844,7 +871,7 @@ class WritingToolApp(QtWidgets.QApplication):
             return
 
         logging.debug('Creating system tray icon')
-        icon_path = os.path.join(os.path.dirname(sys.argv[0]), 'icons', 'app_icon.png')
+        icon_path = resource_path('icons', 'app_icon.png')
         if not os.path.exists(icon_path):
             logging.warning(f'Tray icon not found at {icon_path}')
             # Use a default icon if not found
