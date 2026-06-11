@@ -609,6 +609,84 @@ class WritingToolApp(QtWidgets.QApplication):
         except Exception as e:
             logging.error(f'Error showing popup window: {e}', exc_info=True)
 
+    def _wait_for_modifiers_released(self, timeout: float = 0.5):
+        """
+        Block (briefly) until the user has released the keys that triggered the
+        hotkey, so a subsequently-injected Ctrl+C doesn't fight the still-held
+        physical modifiers (the reported "selection becomes c / cc" bug).
+
+        A freshly-started listener has no view of keys pressed *before* it
+        started — and the trigger combo is, by definition, already down when we
+        get here. So we SEED the held-key set from the registered hotkey
+        (e.g. 'ctrl+space' -> ctrl is assumed held) and then wait for those keys
+        to be released. A timeout caps the wait so a key the listener never
+        observes being released (e.g. user released a hair before we started)
+        can't hang capture — worst case we proceed after `timeout`.
+        """
+        Key = pykeyboard.Key
+        # Map hotkey tokens -> the canonical key plus its left/right variants,
+        # so a release of either physical key clears the seed.
+        token_aliases = {
+            'ctrl':  {Key.ctrl, Key.ctrl_l, Key.ctrl_r},
+            'alt':   {Key.alt, Key.alt_l, Key.alt_r, Key.alt_gr},
+            'shift': {Key.shift, Key.shift_l, Key.shift_r},
+            'cmd':   {Key.cmd, Key.cmd_l, Key.cmd_r},
+            'win':   {Key.cmd, Key.cmd_l, Key.cmd_r},
+            'super': {Key.cmd, Key.cmd_l, Key.cmd_r},
+            'space': {Key.space},
+        }
+
+        # Seed the "still held" set from the trigger combo. Each entry is a
+        # frozenset of keys that count as "the same" physical key — releasing
+        # any member clears the whole entry (pynput reports ctrl_l/ctrl_r, not
+        # the generic Key.ctrl, on release).
+        held = set()
+        hotkey_str = (self.registered_hotkey or 'ctrl+space').lower()
+        for token in hotkey_str.split('+'):
+            token = token.strip()
+            if token in token_aliases:
+                held.add(frozenset(token_aliases[token]))
+            elif len(token) == 1:
+                held.add(frozenset({token}))  # a literal character key in the combo
+
+        if not held:
+            time.sleep(0.03)
+            return
+
+        cleared = threading.Event()
+
+        def _on_release(key):
+            # Build the set of identifiers this release could match.
+            ids = {key}
+            ch = getattr(key, 'char', None)
+            if ch:
+                ids.add(ch)
+            # Remove any seed group that contains a released identifier.
+            for group in list(held):
+                if group & ids:
+                    held.discard(group)
+            if not held:
+                cleared.set()
+
+        try:
+            listener = pykeyboard.Listener(on_release=_on_release)
+            listener.start()
+        except Exception as e:
+            logging.error(f'Could not start modifier-release listener: {e}')
+            time.sleep(0.05)
+            return
+
+        try:
+            cleared.wait(timeout=timeout)
+        finally:
+            try:
+                listener.stop()
+            except Exception:
+                pass
+        # Brief settle so the OS registers the physical key-up before our
+        # synthetic Ctrl+C, avoiding a modifier-state race.
+        time.sleep(0.03)
+
     def _fire_ctrl_c_and_capture_async(self, holder):
         """
         Inject Ctrl+C now (must happen while focus is still on the user's
@@ -628,6 +706,14 @@ class WritingToolApp(QtWidgets.QApplication):
             clipboard_backup = ''
 
         self.clear_clipboard()
+
+        # CRITICAL: wait until the user has physically released the trigger
+        # hotkey (e.g. Ctrl+Space) before we inject our own Ctrl+C. If the
+        # real keys are still held, our synthetic key events collide with the
+        # physical modifier state — the 'c' (or the trigger's own letter/space)
+        # can leak through as a literal character and REPLACE the user's
+        # selection (the reported "selection becomes c / cc" bug).
+        self._wait_for_modifiers_released()
 
         kbrd = pykeyboard.Controller()
         try:
